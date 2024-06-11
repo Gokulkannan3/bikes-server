@@ -8,6 +8,7 @@ const session = require("cookie-parser");
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const setRounds=10;
+const fs = require('fs');
 
 app.use(express.json());
 app.use(cors({origin:'*'}));
@@ -26,13 +27,32 @@ app.use(
     })
 )
 
-    const db = mysql.createConnection({
-        user:'avnadmin',
-        password:'AVNS_5W135YZrjuwuLR-WHt5',
-        host:'mysql-39af648c-gokul.a.aivencloud.com',
-        database:'bikes',
-        port:'11941'
-    })
+var db = mysql.createConnection({
+    host: "gokul-server.mysql.database.azure.com",
+    user: "Gokul",
+    password: "G0kul@3112003",
+    database: "gokul",
+    port: 3306,
+    ssl: {
+        ca: fs.readFileSync("./DigiCertGlobalRootG2.crt.pem"),
+        rejectUnauthorized: false
+    }
+});
+
+
+const connectToDatabase = () => {
+    db.connect((err) => {
+        if (err) {
+            console.error('Error connecting to database:', err);
+            console.log('Retrying connection in 5 seconds...');
+            setTimeout(connectToDatabase, 5000); // Retry after 5 seconds
+        } else {
+            console.log("Connected to database");
+        }
+    });
+};
+
+connectToDatabase();
 
     const verifyJWT = (req, res, next) => {
         const token = req.headers["x-access-token"];

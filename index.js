@@ -167,43 +167,43 @@ connectToDatabase();
 
     app.post('/cregister', (req, res) => {
         const name = req.body?.name;
-        const mail = req.body?.mail;
-        const cname = req.body?.cname;
         const contact = req.body?.contact;
+        const cname = req.body?.cname;
+        const mail = req.body?.mail;
         const address = req.body?.address;
         const area  = req.body?.area;
         const state = req.body?.state;
         const country = req.body?.country;
+        const category = req.body?.category;
         const password = req.body?.password;
         const cpassword = req.body?.cpassword;
-        const category = req.body?.category;
-
+    
         console.log(req.body);
-
+    
         if (password !== cpassword) {
             return res.status(400).json({ error: 'Password and Confirm Password do not match' });
         }
-
-        bcryptjs.hash(password,setRounds,(err,hash)=>{
-            if(err){
-                console.log(err)
+    
+        bcryptjs.hash(password, setRounds, (err, hash) => {
+            if (err) {
+                console.log(err);
             }
-
-            db.query('INSERT INTO cregister(name, mail, cname, contact, address, area, state, country, category, password, cpassword) VALUES (?,?,?,?,?,?,?)',
-            [name, mail, cname, contact, address, area, state, country, category, hash, hash],
-            (err, result) => {
-                if (err) {
-                    console.log(err);
-                    return res.status(500).json({ error: 'Internal Server Error' });
-                } else {
-                    console.log(result);
-                    return res.status(200).json({ message: 'Registration Successful' });
+    
+            db.query('INSERT INTO cregister(name, mail, cname, contact, address, area, state, country, category, password, cpassword) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, mail, cname, contact, address, area, state, country, category, hash, hash],
+                (err, result) => {
+                    if (err) {
+                        console.log(err);
+                        return res.status(500).json({ error: 'Internal Server Error' });
+                    } else {
+                        console.log(result);
+                        return res.status(200).json({ message: 'Registration Successful' });
+                    }
                 }
-            }
-        );
-        })
+            );
+        });
     });
-
+    
     const PORT = 3003
 
     app.listen(PORT,()=>{

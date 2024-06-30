@@ -130,6 +130,45 @@ connectToDatabase();
         res.json({ result: [userDetails] });
     });
 
+    app.post('/slogin', async (req, res) => {
+        const mail = req.body?.mail;
+        const password = req.body?.password;
+    
+        db.query(
+            "SELECT * FROM cregister WHERE mail=?",
+            [mail],
+            (err, result) => {
+                if (err) {
+                    console.log("Error:", err);
+                    res.status(500).json({ error: 'Internal Server Error' });
+                    return;
+                }
+    
+                if (result.length > 0) {
+                    bcryptjs.compare(password, result[0].password, (err, response) => {
+                        if (response) {
+                            const id  = result[0].id;
+                            const token = jwt.sign({ id }, "success", { expiresIn: 5 });
+                            res.json({ auth: true, token: token, result: result[0], message: 'Login Successful' });
+                        } else {
+                            res.status(401).json({ message: 'Invalid Credentials' });
+                        }
+                    });
+                } else {
+                    res.status(401).json({ message: 'Invalid Credentials' });
+                }
+            }
+        );
+    });
+    
+    app.get('/isAauth', verJWT, (req, res) => {
+        const userDetails = {
+            usermail: req.usermail,
+        };
+    
+        res.json({ result: [userDetails] });
+    });
+
     app.post('/register', (req, res) => {
         const name = req.body?.name;
         const mail = req.body?.mail;

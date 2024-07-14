@@ -39,7 +39,6 @@ var db = mysql.createConnection({
     }
 });
 
-
 const connectToDatabase = () => {
     db.connect((err) => {
         if (err) {

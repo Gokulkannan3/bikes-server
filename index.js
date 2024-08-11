@@ -1,31 +1,33 @@
 const express = require('express');
 const mysql = require('mysql2');
 const app = express();
-const cors =require('cors');
+const cors = require('cors');
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
-const session = require("cookie-parser");
+const session = require("express-session");
 const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const setRounds=10;
+const multer = require('multer');
+const path = require('path');
 const fs = require('fs');
 
-app.use(express.json());
-app.use(cors({origin:'*'}));
-app.use(cookieParser());
-app.use(bodyParser.urlencoded({extended:true}));
+const setRounds = 10;
+const jwtSecret = "your_secret_key";
 
-app.use(
-    session({
-        key: "username",
-        secret: "success",
-        resave: false,
-        saveUninitialized: false,
-        cookie:{
-            expires: 60 * 10,
-        }
-    })
-)
+app.use(express.json());
+app.use(cors({ origin: '*' }));
+app.use(cookieParser());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+app.use(session({
+    key: "session_username",
+    secret: jwtSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        expires: 60 * 10,
+    }
+}));
 
 var db = mysql.createConnection({
     host: "gokul-server.mysql.database.azure.com",
@@ -53,197 +55,130 @@ const connectToDatabase = () => {
 
 connectToDatabase();
 
-    const verifyJWT = (req, res, next) => {
-        const token = req.headers["x-access-token"];
-        if (!token) {
-            res.send("We need token give it next time");
-        } else {
-            jwt.verify(token, "secret", (err, decoded) => {
-                if (err) {
-                    res.json({ auth: false, message: "Failed to authenticate" });
-                } else {
-                    req.usermail = decoded.id;
-                    next();
-                }
-            });
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = "images";
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir);
         }
-    };
-    
-    
-    app.get('/isAuth',verifyJWT,(req,res)=>{
-        res.send("Authenticeted Successfully");
-    })
-    
-    app.post('/login', async (req, res) => {
-        const mail = req.body?.mail;
-        const password = req.body?.password;
-    
-        db.query(
-            "SELECT * FROM register WHERE mail=?",
-            [mail],
-            (err, result) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        cb(null, file.fieldname + "_" + Date.now() + path.extname(file.originalname));
+    }
+});
+
+app.use('/images', express.static('./images'));
+
+const upload = multer({ storage: storage });
+
+const verifyJWT = (req, res, next) => {
+    const token = req.headers["x-access-token"];
+    if (!token) {
+        return res.status(401).send("Token required for authentication");
+    } else {
+        jwt.verify(token, jwtSecret, (err, decoded) => {
+            if (err) {
+                return res.status(403).json({ auth: false, message: "Failed to authenticate" });
+            } else {
+                req.usermail = decoded.id;
+                next();
+            }
+        });
+    }
+};
+
+app.get('/isAuth', verifyJWT, (req, res) => {
+    res.send("Authenticated Successfully");
+});
+
+app.post('/login', (req, res) => {
+    const { mail, password } = req.body;
+
+    db.query("SELECT * FROM register WHERE mail=?", [mail], (err, result) => {
+        if (err) {
+            console.error("Error:", err);
+            return res.status(500).json({ error: 'Internal Server Error' });
+        }
+
+        if (result.length > 0) {
+            bcryptjs.compare(password, result[0].password, (err, response) => {
                 if (err) {
-                    console.log("Error:", err);
-                    res.status(500).json({ error: 'Internal Server Error' });
-                    return;
+                    console.error("Error comparing passwords:", err);
+                    return res.status(500).json({ error: 'Internal Server Error' });
                 }
-    
-                if (result.length > 0) {
-                    bcryptjs.compare(password, result[0].password, (err, response) => {
-                        if (response) {
-                            const id  = result[0].id;
-                            const token = jwt.sign({ id }, "success", { expiresIn: 5 });
-                            res.json({ auth: true, token: token, result: result[0], message: 'Login Successful' });
-                        } else {
-                            res.status(401).json({ message: 'Invalid Credentials' });
-                        }
-                    });
+                if (response) {
+                    const id = result[0].id;
+                    const token = jwt.sign({ id }, jwtSecret, { expiresIn: '1h' });
+                    res.json({ auth: true, token, result: result[0], message: 'Login Successful' });
                 } else {
                     res.status(401).json({ message: 'Invalid Credentials' });
                 }
-            }
-        );
-    });
-    
-    const verJWT = (req, res, next) => {
-        const token = req.headers["x-access-token"];
-        if (!token) {
-            res.send("We need token give it next time");
-        } else {
-            jwt.verify(token, "secret", (err, decoded) => {
-                if (err) {
-                    res.json({ auth: false, message: "Failed to authenticate" });
-                } else {
-                    req.usermail = decoded.id;
-                    next();
-                }
             });
+        } else {
+            res.status(401).json({ message: 'Invalid Credentials' });
         }
-    };
-    
-    app.get('/isAauth', verJWT, (req, res) => {
-        const userDetails = {
-            usermail: req.usermail,
-        };
-    
-        res.json({ result: [userDetails] });
     });
+});
 
-    app.post('/slogin', async (req, res) => {
-        const mail = req.body?.mail;
-        const password = req.body?.password;
-    
-        db.query(
-            "SELECT * FROM cregister WHERE mail=?",
-            [mail],
-            (err, result) => {
-                if (err) {
-                    console.log("Error:", err);
-                    res.status(500).json({ error: 'Internal Server Error' });
-                    return;
-                }
-    
-                if (result.length > 0) {
-                    bcryptjs.compare(password, result[0].password, (err, response) => {
-                        if (response) {
-                            const id  = result[0].id;
-                            const token = jwt.sign({ id }, "success", { expiresIn: 5 });
-                            res.json({ auth: true, token: token, result: result[0], message: 'Login Successful' });
-                        } else {
-                            res.status(401).json({ message: 'Invalid Credentials' });
-                        }
-                    });
-                } else {
-                    res.status(401).json({ message: 'Invalid Credentials' });
-                }
-            }
-        );
-    });
-    
-    app.get('/isAauth', verJWT, (req, res) => {
-        const userDetails = {
-            usermail: req.usermail,
-        };
-    
-        res.json({ result: [userDetails] });
-    });
+app.post('/register', (req, res) => {
+    const { name, mail, contact, address, password, cpassword, category } = req.body;
 
-    app.post('/register', (req, res) => {
-        const name = req.body?.name;
-        const mail = req.body?.mail;
-        const contact = req.body?.contact;
-        const address = req.body?.address;
-        const password = req.body?.password;
-        const cpassword = req.body?.cpassword;
-        const category = req.body?.category;
+    if (password !== cpassword) {
+        return res.status(400).json({ error: 'Password and Confirm Password do not match' });
+    }
 
-        console.log(req.body);
-
-        if (password !== cpassword) {
-            return res.status(400).json({ error: 'Password and Confirm Password do not match' });
+    bcryptjs.hash(password, setRounds, (err, hash) => {
+        if (err) {
+            console.error("Error hashing password:", err);
+            return res.status(500).json({ error: 'Internal Server Error' });
         }
 
-        bcryptjs.hash(password,setRounds,(err,hash)=>{
-            if(err){
-                console.log(err)
-            }
-
-            db.query('INSERT INTO register(name, mail, contact, address, category, password, cpassword) VALUES (?,?,?,?,?,?,?)',
-            [name, mail, contact, address,category, hash, hash],
+        db.query('INSERT INTO register(name, mail, contact, address, category, password) VALUES (?, ?, ?, ?, ?, ?)',
+            [name, mail, contact, address, category, hash],
             (err, result) => {
                 if (err) {
-                    console.log(err);
+                    console.error("Database error:", err);
                     return res.status(500).json({ error: 'Internal Server Error' });
                 } else {
-                    console.log(result);
                     return res.status(200).json({ message: 'Registration Successful' });
                 }
             }
         );
-        })
     });
+});
 
-    app.post('/cregister', (req, res) => {
-        const name = req.body?.name;
-        const contact = req.body?.contact;
-        const cname = req.body?.cname;
-        const mail = req.body?.mail;
-        const address = req.body?.address;
-        const area  = req.body?.area;
-        const state = req.body?.state;
-        const country = req.body?.country;
-        const category = req.body?.category;
-        const password = req.body?.password;
-        const cpassword = req.body?.cpassword;
-    
-        console.log(req.body);
-    
-        if (password !== cpassword) {
-            return res.status(400).json({ error: 'Password and Confirm Password do not match' });
+app.post('/pictures', upload.fields([
+    { name: 'front', maxCount: 1 },
+    { name: 'back', maxCount: 1 },
+    { name: 'rightimage', maxCount: 1 },
+    { name: 'leftimage', maxCount: 1 },
+    { name: 'speedometer', maxCount: 1 },
+    { name: 'lefthandle', maxCount: 1 },
+    { name: 'righthandle', maxCount: 1 },
+]), (req, res) => {
+    const { name, cname, contact, mail, address, area, state, country, geartype, mileage, petrol, price } = req.body;
+    const { front, back, rightimage, leftimage, speedometer, lefthandle, righthandle } = req.files;
+    const query = `INSERT INTO details (name, cname, contact, mail, address, area, state, country, front, back, rightimage, leftimage, speedometer, lefthandle, righthandle, geartype, mileage, petrol, price)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+    const values = [
+        name, cname, contact, mail, address, area, state, country, front[0].path,back[0].path,rightimage[0].path,leftimage[0].path,speedometer[0].path,lefthandle[0].path,righthandle[0].path, geartype, mileage, petrol, price
+    ];
+
+    db.query(query, values, (err, result) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Internal server error', details: err.message });
+        } else {
+            console.log('Insertion result:', result);
+            return res.status(200).json({ message: 'Success' });
         }
-    
-        bcryptjs.hash(password, setRounds, (err, hash) => {
-            if (err) {
-                console.log(err);
-            }
-    
-            db.query('INSERT INTO cregister(name, mail, cname, contact, address, area, state, country, category, password, cpassword) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [name, mail, cname, contact, address, area, state, country, category, hash, hash],
-                (err, result) => {
-                    if (err) {
-                        console.log(err);
-                        return res.status(500).json({ error: 'Internal Server Error' });
-                    } else {
-                        console.log(result);
-                        return res.status(200).json({ message: 'Registration Successful' });
-                    }
-                }
-            );
-        });
     });
-    
-    const PORT = 3003
+});
 
-    app.listen(PORT,()=>{
-        console.log('Server started',PORT);
-    });
+
+const PORT = 3003;
+app.listen(PORT, () => {
+    console.log('Server started on port', PORT);
+});
